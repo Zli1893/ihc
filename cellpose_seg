@@ -42,8 +42,10 @@ HOTSPOT_SIZE = 4
 batch_size = 4
 model = models.Cellpose(gpu=True, model_type='cyto')
 chan = [[0,0]]
-png_dir=img_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/yellow/'
-result_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+
+root_path='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+png_dir=os.path.join(root_path,'yellow/')
+result_dir=root_path
 image_ids = list(os.walk(img_dir))[0][2]
 time_start = time.time()
 
@@ -59,7 +61,7 @@ for n, image_id in zip(range(len(image_ids)), image_ids):
         os.makedirs(result_file_dir)
     image_path = img_dir+image_id
     image = open_slide(image_path)
-    roi_mask = np.load(os.path.join(result_dir, 'tcga-png-roi-over', image_id.split('ndpi')[0] + 'npy'))
+    roi_mask = np.load(os.path.join(result_dir, 'roi', image_id.split('ndpi')[0] + 'npy'))
     roi_mask=roi_mask.astype(np.uint8)
     lv=0
     sle = round(image.level_dimensions[lv][0] / np.shape(roi_mask)[1])
