@@ -61,7 +61,10 @@ for n, image_id in zip(range(len(image_ids)), image_ids):
         os.makedirs(result_file_dir)
     image_path = img_dir+image_id
     image = open_slide(image_path)
-    roi_mask = np.load(os.path.join(result_dir, 'roi', image_id.split('ndpi')[0] + 'npy'))
+    if image_id.endswith('ndpi'):
+       roi_mask = np.load(os.path.join(result_dir, 'roi', image_id.split('ndpi')[0] + 'npy'))
+    if image_id.endswith('svs'):
+       roi_mask = np.load(os.path.join(result_dir, 'roi', image_id.split('svs')[0] + 'npy'))       
     roi_mask=roi_mask.astype(np.uint8)
     lv=0
     sle = round(image.level_dimensions[lv][0] / np.shape(roi_mask)[1])
