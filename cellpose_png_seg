@@ -1,0 +1,73 @@
+import numpy as np
+import time, os, sys
+from urllib.parse import urlparse
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from cellpose import utils, io, models, plot
+import math
+import copy
+import skimage
+from skimage.segmentation import mark_boundaries
+import cv2
+from openslide import open_slide
+from skimage import io,color, measure
+import skimage.morphology as sm
+import utilities
+from skimage.color import rgb2gray
+
+png_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/image.png'
+result_file_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+region_img = skimage.io.imread(png_dir)
+n_y, n_x = region_img.shape[:2]
+
+num_steps_y = math.ceil(n_y / HEIGHTS)
+num_steps_x = math.ceil(n_x / WIDTHS)
+pad_y = max(num_steps_y * HEIGHTS - n_y, 0)
+pad_x = max(num_steps_x * WIDTHS - n_x, 0)
+region_img = np.pad(region_img, [(pad_y // 2, pad_y - pad_y // 2), (pad_x // 2, pad_x - pad_x // 2), (0, 0)],
+                    'constant', constant_values=[(0, 0)])
+n_y, n_x = region_img.shape[:2]
+num_steps_y = math.ceil(n_y / HEIGHTS)
+num_steps_x = math.ceil(n_x / WIDTHS)
+
+image_crops = []
+
+for image_crop in crop(region_img, HEIGHTS, WIDTHS):
+    image_crops.append(image_crop)
+image_crops_gray = []
+for image_crop in image_crops:
+    image_crops_gray.append(rgb2gray(image_crop))
+
+masks, flows, styles, diams = model.eval(image_crops_gray, batch_size=256, diameter=None, channels=chan,
+                                         flow_threshold=0.5, cellprob_threshold=0, )
+for j, mask in zip(range(len(masks)), masks):
+    r_i = j // num_steps_x
+    c_i = j % num_steps_x
+    image_batch = image_crops[j]
+    h_m, w_m = mask.shape
+    mask_c = np.zeros((h_m, w_m, np.max(mask)), dtype=np.int32)
+    class_ids = np.zeros(np.max(mask))
+    for i_mask in range(np.max(mask)):
+        mask_i = copy.deepcopy(mask)
+        mask_i[mask_i != (i_mask + 1)] = 0
+        mask_i[mask_i == (i_mask + 1)] = 1
+        red = image_batch[:, :, 0]
+        green = image_batch[:, :, 1]
+        blue = image_batch[:, :, 2]
+        red = np.mean(red[mask_i > 0])
+        green = np.mean(green[mask_i > 0])
+        blue = np.mean(blue[mask_i > 0])
+        if red > 1.1 * blue and red > 1.05 * green and green > blue and blue < 210:
+            mask_c[:, :, i_mask] = mask_i
+            class_ids[i_mask] = 1
+        else:
+            mask_c[:, :, i_mask] = mask_i
+            class_ids[i_mask] = 0
+
+    image_annotateds = mark_boundaries(image_crops[j], utilities.mask_to_label(mask_c[:, :, class_ids == 1]),
+                                       color=(0, 1, 0), mode='thick')
+    image_annotateds = mark_boundaries(image_annotateds, utilities.mask_to_label(mask_c[:, :, class_ids == 0]),
+                                       color=(0, 0, 1), mode='thick')
+    image_annotateds = (image_annotateds * 255).astype(np.uint8)
+    region_img[r_i * HEIGHTS:(r_i + 1) * HEIGHTS, c_i * WIDTHS: (c_i + 1) * WIDTHS, :] = image_annotateds
+mpl.image.imsave(os.path.join(result_file_dir, 'region_img_cellpose_v' + str(cnt) + '_' + str(s_r_i) + '_' + str(s_r_j) + '.png'),region_img)
