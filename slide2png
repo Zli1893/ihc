@@ -1,0 +1,17 @@
+from openslide import open_slide
+import os
+
+# root_path = os.getcwd()
+root_path='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+img_dir=os.path.join(root_path,'yellow/')
+result_dir=os.path.join(root_path,'png/')
+# tumor_mask_files = sorted(list(Path(tumor_mask_dir).iterdir()))
+image_ids = list(os.walk(img_dir))[0][2]
+for n, image_id in zip(range(len(image_ids)), image_ids):
+    print(n)
+    image_path = img_dir+image_id
+    image = open_slide(image_path)
+    level_dimensions_len=len(image.level_dimensions)
+    img = image.read_region((0, 0), 6, image.level_dimensions[6])
+    img = img.convert('RGB')
+    img.save(os.path.join(result_dir, image_id.split('ndpi')[0] + 'png'))
