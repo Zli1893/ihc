@@ -14,4 +14,7 @@ for n, image_id in zip(range(len(image_ids)), image_ids):
     level_dimensions_len=len(image.level_dimensions)
     img = image.read_region((0, 0), 6, image.level_dimensions[6])
     img = img.convert('RGB')
-    img.save(os.path.join(result_dir, image_id.split('ndpi')[0] + 'png'))
+    if image_id.endswith('ndpi'):
+       img.save(os.path.join(result_dir, image_id.split('ndpi')[0] + 'png'))
+    if image_id.endswith('svs'):
+       img.save(os.path.join(result_dir, image_id.split('svs')[0] + 'png'))
