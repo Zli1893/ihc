@@ -6,10 +6,6 @@ import matplotlib.pyplot as plt
 import copy
 import numpy as np
 
-
-ROOT_DIR = os.getcwd()
-sys.path.append(os.path.join(ROOT_DIR, 'python-wsi-preprocessing-master', 'deephistopath','wsi'))
-
 import slide
 import util
 import filter
