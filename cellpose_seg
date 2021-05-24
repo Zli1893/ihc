@@ -1,0 +1,154 @@
+import numpy as np
+import time, os, sys
+from urllib.parse import urlparse
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from cellpose import utils, io, models, plot
+import math
+import copy
+from skimage.segmentation import mark_boundaries
+import cv2
+from openslide import open_slide
+from skimage import io,color, measure
+import skimage.morphology as sm
+import utilities
+from skimage.color import rgb2gray
+
+def crop(image, H, W):
+
+	# if image size is smaller than crop size, pad the image
+    n_y, n_x = image.shape[:2]
+    # print(n_y,n_x)
+#     pad_y = max(H-n_y, 0)
+#     pad_x = max(W-n_x, 0)
+    #需要补充的大小
+    num_steps_y = math.ceil(n_y/H)
+    num_steps_x = math.ceil(n_x/W)
+    pad_y = max(num_steps_y*H-n_y, 0)
+    pad_x = max(num_steps_x*W-n_x, 0)
+    image = np.pad(image, [(pad_y//2, pad_y-pad_y//2), (pad_x//2, pad_x-pad_x//2), (0, 0)], 'constant', constant_values=[(0,0)])
+    n_y, n_x = image.shape[:2]
+    num_steps_y = math.ceil(n_y/H)
+    num_steps_x = math.ceil(n_x/W)
+    for i in np.linspace(0, n_y-H, num_steps_y, dtype=int):
+        for j in np.linspace(0, n_x-W, num_steps_x, dtype=int):
+            # matplotlib.image.imsave(os.path.join('/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/result_dir_over/607223    CD3  黄伟才 - 2021-04-07 09.18.29.ndpi', str(i)+'_' +str(j)+ '.png'), image[i:i+H, j:j+W])
+            yield image[i:i+H, j:j+W]
+            # print((i+H,j+W))
+
+HEIGHTS=224
+WIDTHS=224
+HOTSPOT_SIZE = 4
+batch_size = 4
+model = models.Cellpose(gpu=True, model_type='cyto')
+chan = [[0,0]]
+png_dir=img_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/yellow/'
+result_dir='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+image_ids = list(os.walk(img_dir))[0][2]
+time_start = time.time()
+
+for n, image_id in zip(range(len(image_ids)), image_ids):
+
+    # if n !=0:
+    #     continue
+    print(n)
+    print(image_id)
+
+    result_file_dir=os.path.join(result_dir,'result_dir_test',image_id)
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir)
+    image_path = img_dir+image_id
+    image = open_slide(image_path)
+    roi_mask = np.load(os.path.join(result_dir, 'tcga-png-roi-over', image_id.split('ndpi')[0] + 'npy'))
+    roi_mask=roi_mask.astype(np.uint8)
+    lv=0
+    sle = round(image.level_dimensions[lv][0] / np.shape(roi_mask)[1])
+    labeled_img, num = measure.label(roi_mask, neighbors=8, background=0, return_num=True)
+    cnt = -1
+    for region in measure.regionprops(labeled_img):
+        cnt += 1
+
+        minr_o, minc_o, maxr_o, maxc_o = region.bbox
+
+        region_size=1024
+        for s_r_i in range(math.ceil((maxr_o-minr_o) / region_size)):
+            for s_r_j in range(math.ceil((maxc_o-minc_o) / region_size)):
+                maxr=min(maxr_o,((s_r_i +1)* region_size+minr_o))
+                maxc=min(maxc_o,((s_r_j +1)* region_size+minc_o))
+                minr=s_r_i* region_size+minr_o
+                minc=s_r_j* region_size+minc_o
+
+                tmp_labeled_img = copy.deepcopy(labeled_img)
+                mask_patch = tmp_labeled_img[minr:maxr, minc:maxc]
+                mask_patch[mask_patch != region.label] = 0
+                mask_patch[mask_patch == region.label] = 1
+                tmp_roi_mask = copy.deepcopy(roi_mask)
+                roi_mask_patch = tmp_roi_mask[minr:maxr, minc:maxc]
+                region_img = np.array(
+                    image.read_region((minc * sle*2**lv, minr * sle*2**lv), lv, ((maxc - minc) * sle, (maxr - minr) * sle)).convert(
+                        'RGB'))
+                # matplotlib.image.imsave(os.path.join(result_file_dir, 'region_img1' + '.png'), region_img[0:10000,0:10000])
+                n_y, n_x = region_img.shape[:2]
+
+                tmp = cv2.resize(roi_mask_patch, (n_x, n_y), interpolation=cv2.INTER_NEAREST)
+                region_img[:, :, 0] = region_img[:, :, 0] * tmp
+                region_img[:, :, 1] = region_img[:, :, 1] * tmp
+                region_img[:, :, 2] = region_img[:, :, 2] * tmp
+                del tmp
+                num_steps_y = math.ceil(n_y / HEIGHTS)
+                num_steps_x = math.ceil(n_x / WIDTHS)
+                pad_y = max(num_steps_y * HEIGHTS - n_y, 0)
+                pad_x = max(num_steps_x * WIDTHS - n_x, 0)
+                region_img = np.pad(region_img,[(pad_y // 2, pad_y - pad_y // 2), (pad_x // 2, pad_x - pad_x // 2), (0, 0)],'constant',constant_values=[(0, 0)])
+                n_y, n_x = region_img.shape[:2]
+                num_steps_y = math.ceil(n_y / HEIGHTS)
+                num_steps_x = math.ceil(n_x / WIDTHS)
+                # plt.imshow(region_img)
+                # plt.show()
+
+                # region_mask = np.zeros((n_y, n_x), dtype=np.bool)
+                # region_annotateds = np.zeros((n_y, n_x, 3), dtype=float)
+                W = np.zeros((num_steps_y * HOTSPOT_SIZE, num_steps_x * HOTSPOT_SIZE), dtype=np.uint8)
+                W_small = np.zeros((num_steps_y * HOTSPOT_SIZE * 2, num_steps_x * HOTSPOT_SIZE * 2), dtype=np.uint8)
+                image_crops = []
+
+                for image_crop in crop(region_img, HEIGHTS, WIDTHS):
+                    # image_crop = normalizeStaining(image_crop)
+                    image_crops.append(image_crop)
+                image_crops_gray = []
+                for image_crop in image_crops:
+                    image_crops_gray.append(rgb2gray(image_crop))
+
+                masks, flows, styles, diams = model.eval(image_crops_gray, batch_size=256, diameter=None, channels=chan, flow_threshold=0.5, cellprob_threshold=0,)
+                for j, mask in zip(range(len(masks)), masks):
+                    r_i = j // num_steps_x
+                    c_i = j % num_steps_x
+                    image_batch=image_crops[j]
+                    h_m,w_m=mask.shape
+                    mask_c=np.zeros((h_m,w_m,np.max(mask)),dtype=np.int32)
+                    class_ids=np.zeros(np.max(mask))
+                    for i_mask in range(np.max(mask)):
+                        mask_i = copy.deepcopy(mask)
+                        mask_i[mask_i != (i_mask + 1)] = 0
+                        mask_i[mask_i == (i_mask + 1)] = 1
+                        red = image_batch[:, :, 0]
+                        green = image_batch[:, :, 1]
+                        blue = image_batch[:, :, 2]
+                        red = np.mean(red[mask_i > 0])
+                        green = np.mean(green[mask_i > 0])
+                        blue = np.mean(blue[mask_i > 0])
+                        if red > 1.1 * blue and red > 1.05 * green and green > blue and blue < 210:
+                            mask_c[:,:,i_mask] = mask_i
+                            class_ids[i_mask]=1
+                        else:
+                            mask_c[:,:,i_mask] = mask_i
+                            class_ids[i_mask] = 0
+
+                    image_annotateds = mark_boundaries(image_crops[j], utilities.mask_to_label(mask_c[:,:,class_ids==1]), color=(0, 1, 0), mode='thick')
+                    image_annotateds = mark_boundaries(image_annotateds, utilities.mask_to_label(mask_c[:,:,class_ids==0]), color=(0, 0, 1), mode='thick')
+                    image_annotateds = (image_annotateds * 255).astype(np.uint8)
+                    region_img[r_i * HEIGHTS:(r_i + 1) * HEIGHTS, c_i * WIDTHS: (c_i + 1) * WIDTHS, :] = image_annotateds
+                mpl.image.imsave(os.path.join(result_file_dir, 'region_img_cellpose_v'+ str(cnt)+'_'+ str(s_r_i)+'_'+ str(s_r_j) + '.png'),region_img)
+
+time_end = time.time()
+print('totally cost', time_end - time_start)
