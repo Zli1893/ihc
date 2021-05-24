@@ -1,0 +1,52 @@
+import PIL
+from PIL import Image
+import os
+import sys
+import matplotlib.pyplot as plt
+import copy
+import numpy as np
+
+
+ROOT_DIR = os.getcwd()
+sys.path.append(os.path.join(ROOT_DIR, 'python-wsi-preprocessing-master', 'deephistopath','wsi'))
+
+import slide
+import util
+import filter
+
+root_path='/media/microway1/Backup Plus/zli/data/IHCsaomiao5-21/'
+png_dir=os.path.join(root_path,'png/')
+result_dir=os.path.join(root_path,'png1/')
+result_dir1=os.path.join(root_path,'roi/')
+image_ids = list(os.walk(png_dir))[0][2]
+if not os.path.exists(result_dir):
+    os.makedirs(result_dir)
+if not os.path.exists(result_dir1):
+    os.makedirs(result_dir1)
+for n, image_id in zip(range(len(image_ids)), image_ids):
+    print(n)
+    # if n !=1:
+    #     continue
+    img_path=os.path.join(png_dir,image_id)
+    img = slide.open_image(img_path)
+    rgb = util.pil_to_np_rgb(img)
+    plt.rcParams['figure.dpi'] = 600
+    plt.imshow(rgb)
+    plt.show()
+    n_y, n_x = rgb.shape[:2]
+    r = copy.deepcopy(rgb[:, :, 0]).astype(np.float)
+    g = copy.deepcopy(rgb[:, :, 1]).astype(np.float)
+    b = copy.deepcopy(rgb[:, :, 2]).astype(np.float)
+    # gr_ch_mask = (r >b) & (r > g) & (g > b)
+    gr_ch_mask=(b<220)
+
+    mask = filter.filter_remove_small_objects(gr_ch_mask, min_size=1000, output_type="bool")
+    # mask = np.zeros((n_y, n_x), dtype=np.bool)
+    # mask[400:600, 1750:2000] = True
+    img=util.np_to_pil(util.mask_rgb(rgb, mask))
+    img.save(os.path.join(result_dir, image_id.split('.png')[0] + 'copy.png'))
+    np.save(os.path.join(result_dir1, image_id.split('png')[0] + 'npy'),mask.astype(np.int))
+    # plt.rcParams['figure.dpi'] = 600
+    # plt.imshow(img)
+    # plt.show()
+    # a=1
